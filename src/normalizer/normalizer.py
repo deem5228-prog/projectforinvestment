@@ -1,8 +1,13 @@
-# Data normalization and cleaning
+# Data normalization and cleaning — PRIMARY DATA LAYER
+# Called by judge_agent.py before agent dispatch to fetch and enrich data once.
 """
 Data Normalizer
 ===============
-แปลงข้อมูลดิบจาก data layer ให้เป็น structured dict ที่พร้อมส่งให้ agents
+Primary data layer for the agent pipeline.  ``judge_agent`` calls
+``normalize(ticker, end_date)`` **once** before dispatching to the four
+analyst agents (Buffett, Taleb, Hedge Fund, Quant).  The resulting dict
+is passed to each agent via the ``normalized_data`` parameter so they
+skip redundant data fetches and receive enriched FinancialMetrics.
 
 หน้าที่หลัก:
   1. คำนวณ metrics ที่ yfinance ไม่ได้ให้มาตรงๆ

@@ -143,8 +143,13 @@ function LoadingSpinner() {
 // ── Main Dashboard ───────────────────────────────────────────────────────────
 
 export default function Dashboard() {
+  // Default to 1 year ago — yfinance has complete annual data for past dates
+  const oneYearAgo = new Date()
+  oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1)
+  const defaultDate = oneYearAgo.toISOString().slice(0, 10)
+
   const [ticker, setTicker] = useState('')
-  const [date, setDate]     = useState('')
+  const [date, setDate]     = useState(defaultDate)
   const { result, loading, error, analyze } = useAnalysis()
 
   const todayISO = new Date().toISOString().slice(0, 10)

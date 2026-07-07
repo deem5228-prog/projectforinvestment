@@ -1,0 +1,27 @@
+# Python Cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.venv/
+venv/
+ENV/
+env/
+
+# Node.js
+node_modules/
+dist/
+.vite/
+
+# Environment variables (Crucial: do not upload private api keys)
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db

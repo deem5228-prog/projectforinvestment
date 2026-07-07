@@ -105,7 +105,7 @@ def _run_judge(ticker: str, end_date: str) -> JudgeReport:
       3. Aggregates results with weighted voting + Taleb veto
       4. Calls Gemini LLM for final verdict narrative
     """
-    return judge_agent(ticker, end_date, parallel=True)
+    return judge_agent(ticker, end_date, parallel=False)
 
 
 def _report_to_response(report: JudgeReport) -> dict:

@@ -80,6 +80,13 @@ def hedge_fund_agent(ticker: str, end_date: str, normalized_data: dict | None = 
     news = get_company_news(ticker, end_date=end_date, start_date=start_date_3m, limit=50)
     insider_trades = get_insider_trades(ticker, end_date=end_date, start_date=start_date_1y)
 
+    # Enrich news with LLM-based sentiment (yfinance doesn't provide it).
+    try:
+        from src.utils.sentiment import enrich_news_sentiment
+        news = enrich_news_sentiment(news)
+    except Exception as e:
+        logger.warning("[hedge_fund] sentiment enrichment failed, using raw news: %s", e)
+
     # ── Run sub-analyses ──────────────────────────────────────────────────────
     momentum        = analyze_momentum(prices_df)
     catalyst        = analyze_catalyst(news, line_items, metrics)

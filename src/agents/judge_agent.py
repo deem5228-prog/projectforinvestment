@@ -18,6 +18,7 @@ Flow:
 
 import json
 import logging
+import time
 import concurrent.futures
 from dataclasses import dataclass, asdict
 from typing import Literal
@@ -188,13 +189,17 @@ def _run_agents(ticker: str, end_date: str, parallel: bool,
                     logger.warning("[judge] %s agent failed: %s", name, e)
                     results[name] = {"signal": "neutral", "confidence": 50, "reasoning": f"Error: {e}"}
     else:
-        for name, fn in tasks.items():
+        for i, (name, fn) in enumerate(tasks.items()):
             try:
                 results[name] = fn(ticker, end_date, normalized_data=normalized_data)
                 logger.info("[judge] %s agent done → %s", name, results[name]["signal"])
             except Exception as e:
                 logger.warning("[judge] %s agent failed: %s", name, e)
                 results[name] = {"signal": "neutral", "confidence": 50, "reasoning": f"Error: {e}"}
+            # Space out LLM calls to respect free-tier rate limit (5 req/min).
+            if i < len(tasks) - 1:
+                logger.info("[judge] waiting 7s before next agent (rate limit)...")
+                time.sleep(7)
 
     return results
 

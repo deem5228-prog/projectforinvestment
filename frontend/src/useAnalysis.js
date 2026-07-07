@@ -32,7 +32,7 @@ export function useAnalysis() {
       }
 
       const { data } = await axios.post(API_BASE, payload, {
-        timeout: 120_000,   // 2 min — analysis can take a while
+        timeout: 600_000,   // 10 min — sequential agents + rate-limit sleeps
         headers: { 'Content-Type': 'application/json' },
       })
 
@@ -44,6 +44,8 @@ export function useAnalysis() {
           err.response?.data?.message ||
           err.message
         setError(msg)
+      } else if (err.code === 'ECONNABORTED') {
+        setError('Analysis timed out. The system is still processing — please try again in a moment.')
       } else {
         setError(err.message || 'Unknown error')
       }

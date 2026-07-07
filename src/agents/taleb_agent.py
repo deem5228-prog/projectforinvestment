@@ -71,6 +71,13 @@ def nassim_taleb_agent(ticker: str, end_date: str, normalized_data: dict | None 
     insider_trades = get_insider_trades(ticker, end_date=end_date, start_date=start_date)
     news = get_company_news(ticker, end_date=end_date, start_date=start_date, limit=100)
 
+    # Enrich news with LLM-based sentiment (yfinance doesn't provide it).
+    try:
+        from src.utils.sentiment import enrich_news_sentiment
+        news = enrich_news_sentiment(news)
+    except Exception as e:
+        logger.warning("[taleb] sentiment enrichment failed, using raw news: %s", e)
+
     tail_risk      = analyze_tail_risk(prices_df)
     antifragility  = analyze_antifragility(metrics, line_items, market_cap)
     convexity      = analyze_convexity(metrics, line_items, prices_df, market_cap)
