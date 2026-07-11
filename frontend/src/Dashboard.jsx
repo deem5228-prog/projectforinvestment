@@ -126,16 +126,75 @@ function ResultPanel({ result }) {
   )
 }
 
-function LoadingSpinner() {
+// ── Pipeline Tracker ─────────────────────────────────────────────────────────
+
+const STATUS_ICONS = {
+  pending: '○',
+  running: '◌',
+  done:    '●',
+  error:   '✕',
+}
+
+const STATUS_COLORS = {
+  pending: 'var(--text-muted)',
+  running: 'var(--accent)',
+  done:    'var(--green)',
+  error:   'var(--red)',
+}
+
+function PipelineTracker({ steps, ticker }) {
   return (
-    <div className="loading-container">
-      <div className="spinner-rings">
-        <div className="ring ring-1" />
-        <div className="ring ring-2" />
-        <div className="ring ring-3" />
+    <div className="pipeline-tracker">
+      <div className="pipeline-header">
+        <span className="pipeline-icon">⚙️</span>
+        <span className="pipeline-title">Analysis Pipeline</span>
+        <span className="pipeline-ticker">{ticker}</span>
       </div>
-      <p className="loading-label">Running 4 AI agents in parallel…</p>
-      <p className="loading-sublabel">Buffett · Taleb · Hedge Fund · Quant</p>
+
+      <div className="pipeline-steps">
+        {steps.map((step, i) => (
+          <div
+            key={step.id}
+            className={`pipeline-step pipeline-step--${step.status}`}
+          >
+            {/* Connector line */}
+            {i > 0 && (
+              <div
+                className="pipeline-connector"
+                style={{
+                  background: step.status === 'pending'
+                    ? 'var(--border)'
+                    : STATUS_COLORS[step.status],
+                }}
+              />
+            )}
+
+            {/* Step indicator */}
+            <div className="step-row">
+              <div
+                className={`step-indicator step-indicator--${step.status}`}
+                style={{ color: STATUS_COLORS[step.status] }}
+              >
+                {step.status === 'running' ? (
+                  <span className="step-spinner" />
+                ) : (
+                  STATUS_ICONS[step.status]
+                )}
+              </div>
+
+              <div className="step-content">
+                <div className="step-label-row">
+                  <span className="step-icon">{step.icon}</span>
+                  <span className="step-label">{step.label}</span>
+                </div>
+                {step.detail && (
+                  <span className="step-detail">{step.detail}</span>
+                )}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   )
 }
@@ -150,7 +209,7 @@ export default function Dashboard() {
 
   const [ticker, setTicker] = useState('')
   const [date, setDate]     = useState(defaultDate)
-  const { result, loading, error, analyze } = useAnalysis()
+  const { result, loading, error, steps, analyze } = useAnalysis()
 
   const todayISO = new Date().toISOString().slice(0, 10)
 
@@ -247,8 +306,8 @@ export default function Dashboard() {
           )}
         </section>
 
-        {/* ── Loading state ── */}
-        {loading && <LoadingSpinner />}
+        {/* ── Pipeline Tracker (replaces old spinner) ── */}
+        {loading && <PipelineTracker steps={steps} ticker={ticker} />}
 
         {/* ── Results ── */}
         {result && !loading && <ResultPanel result={result} />}

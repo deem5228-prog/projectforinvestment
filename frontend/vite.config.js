@@ -7,6 +7,10 @@ export default defineConfig({
     port: 5173,
     proxy: {
       // Proxy /analyze calls to FastAPI backend (avoids CORS in dev)
+      '/analyze/stream': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+      },
       '/analyze': {
         target: 'http://localhost:8000',
         changeOrigin: true,

@@ -76,7 +76,8 @@ SIGNAL_SCORES = {"bullish": 1.0, "neutral": 0.5, "bearish": 0.0}
 
 # ── Entry point ───────────────────────────────────────────────────────────────
 
-def judge_agent(ticker: str, end_date: str, parallel: bool = True) -> JudgeReport:
+def judge_agent(ticker: str, end_date: str, parallel: bool = True,
+                on_progress=None) -> JudgeReport:
     """
     Run all 4 analysts then synthesize a final verdict.
 
@@ -84,24 +85,38 @@ def judge_agent(ticker: str, end_date: str, parallel: bool = True) -> JudgeRepor
         ticker:   Stock ticker symbol, e.g. "AAPL"
         end_date: ISO date string, e.g. "2024-12-31"
         parallel: Run agents concurrently (faster) or sequentially (easier to debug)
+        on_progress: Optional callback(step_id, status, detail) for live progress
 
     Returns:
         JudgeReport with BUY / HOLD / SELL + full breakdown
     """
+    def _emit(step_id, status, detail=""):
+        """Fire progress callback if provided."""
+        if on_progress:
+            try:
+                on_progress(step_id, status, detail)
+            except Exception:
+                pass  # Never let callback errors crash the pipeline
+
     logger.info("[judge] starting analysis for %s", ticker)
 
     # ── Step 0: Normalize data once (shared by all agents) ────────────────
+    _emit("normalizer", "running", "Fetching financial data from Yahoo Finance…")
     try:
         normalized_data = normalize(ticker, end_date)
+        n_metrics = len(normalized_data.get("metrics", []))
+        n_items = len(normalized_data.get("line_items", []))
         logger.info("[judge] normalizer done — %d metrics, %d line_items",
-                    len(normalized_data.get("metrics", [])),
-                    len(normalized_data.get("line_items", [])))
+                    n_metrics, n_items)
+        _emit("normalizer", "done", f"{n_metrics} metrics, {n_items} line items")
     except Exception as e:
         logger.warning("[judge] normalizer failed, agents will self-fetch: %s", e)
         normalized_data = None
+        _emit("normalizer", "error", str(e))
 
     # ── Step 1: Run all agents ────────────────────────────────────────────
-    raw = _run_agents(ticker, end_date, parallel=parallel, normalized_data=normalized_data)
+    raw = _run_agents(ticker, end_date, parallel=parallel,
+                      normalized_data=normalized_data, on_progress=_emit)
 
     # ── Step 2: Package into AgentResult objects ──────────────────────────
     results = [
@@ -117,6 +132,7 @@ def judge_agent(ticker: str, end_date: str, parallel: bool = True) -> JudgeRepor
     ]
 
     # ── Step 3: Aggregate signals → preliminary verdict ───────────────────
+    _emit("aggregation", "running", "Computing weighted vote & Taleb veto…")
     aggregation = _aggregate_signals(results)
 
     # ── Step 4: Extract strengths & risks from agent reasonings ──────────
@@ -128,8 +144,11 @@ def judge_agent(ticker: str, end_date: str, parallel: bool = True) -> JudgeRepor
         aggregation["consensus_strength"],
         raw.get("nassim_taleb", {}).get("signal", "neutral"),
     )
+    score = round(aggregation['weighted_score'] * 100)
+    _emit("aggregation", "done", f"Score {score}%, position: {position_size}")
 
     # ── Step 6: LLM narrative verdict ────────────────────────────────────
+    _emit("verdict", "running", "Gemini LLM synthesizing final verdict…")
     report_data = {
         "ticker": ticker,
         "aggregation": aggregation,
@@ -139,6 +158,7 @@ def judge_agent(ticker: str, end_date: str, parallel: bool = True) -> JudgeRepor
         "position_size": position_size,
     }
     verdict_out = _generate_verdict(ticker, report_data)
+    _emit("verdict", "done", f"{verdict_out['verdict']} ({verdict_out['confidence']}% confidence)")
 
     report = JudgeReport(
         ticker=ticker,
@@ -162,7 +182,8 @@ def judge_agent(ticker: str, end_date: str, parallel: bool = True) -> JudgeRepor
 # ── Runner ─────────────────────────────────────────────────────────────────────
 
 def _run_agents(ticker: str, end_date: str, parallel: bool,
-                normalized_data: dict | None = None) -> dict:
+                normalized_data: dict | None = None,
+                on_progress=None) -> dict:
     """Run all 4 agents, returning dict of name → result dict."""
 
     tasks = {
@@ -175,6 +196,10 @@ def _run_agents(ticker: str, end_date: str, parallel: bool,
     results = {}
 
     if parallel:
+        # Emit all as running
+        for name in tasks:
+            if on_progress:
+                on_progress(f"agent_{name}", "running", "Running in parallel…")
         with concurrent.futures.ThreadPoolExecutor(max_workers=4) as ex:
             futures = {
                 ex.submit(fn, ticker, end_date, normalized_data=normalized_data): name
@@ -184,18 +209,32 @@ def _run_agents(ticker: str, end_date: str, parallel: bool,
                 name = futures[future]
                 try:
                     results[name] = future.result()
-                    logger.info("[judge] %s agent done → %s", name, results[name]["signal"])
+                    signal = results[name]["signal"]
+                    conf = results[name]["confidence"]
+                    logger.info("[judge] %s agent done → %s", name, signal)
+                    if on_progress:
+                        on_progress(f"agent_{name}", "done", f"{signal} ({conf}%)")
                 except Exception as e:
                     logger.warning("[judge] %s agent failed: %s", name, e)
                     results[name] = {"signal": "neutral", "confidence": 50, "reasoning": f"Error: {e}"}
+                    if on_progress:
+                        on_progress(f"agent_{name}", "error", str(e))
     else:
         for i, (name, fn) in enumerate(tasks.items()):
+            if on_progress:
+                on_progress(f"agent_{name}", "running", "Analyzing…")
             try:
                 results[name] = fn(ticker, end_date, normalized_data=normalized_data)
-                logger.info("[judge] %s agent done → %s", name, results[name]["signal"])
+                signal = results[name]["signal"]
+                conf = results[name]["confidence"]
+                logger.info("[judge] %s agent done → %s", name, signal)
+                if on_progress:
+                    on_progress(f"agent_{name}", "done", f"{signal} ({conf}%)")
             except Exception as e:
                 logger.warning("[judge] %s agent failed: %s", name, e)
                 results[name] = {"signal": "neutral", "confidence": 50, "reasoning": f"Error: {e}"}
+                if on_progress:
+                    on_progress(f"agent_{name}", "error", str(e))
             # Space out LLM calls to respect free-tier rate limit.
             if i < len(tasks) - 1:
                 logger.info("[judge] waiting 12s before next agent (rate limit)...")

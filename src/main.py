@@ -12,8 +12,13 @@ from contextlib import asynccontextmanager
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict
 
+import json
+import queue
+import threading
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 
@@ -269,6 +274,87 @@ async def analyze_stock(request: AnalyzeRequest):
             status_code=500,
             detail=f"Analysis failed for {ticker}: {str(e)}",
         )
+
+
+@app.post("/analyze/stream", tags=["Analysis"])
+async def analyze_stock_stream(request: AnalyzeRequest):
+    """
+    SSE streaming endpoint — same analysis as /analyze but sends
+    real-time progress events so the frontend can show a live pipeline tracker.
+
+    Event types:
+      - progress: {step, status, detail}  — pipeline step update
+      - result:   full analysis JSON      — final result
+      - error:    {detail}                — fatal error
+    """
+    ticker = request.ticker.strip().upper()
+    if not ticker:
+        raise HTTPException(status_code=400, detail="Ticker is required")
+    end_date = request.get_end_date()
+
+    # Thread-safe queue for progress events
+    progress_q: queue.Queue = queue.Queue()
+
+    def on_progress(step_id: str, status: str, detail: str = ""):
+        """Called from judge_agent (in a worker thread) to push events."""
+        progress_q.put({"type": "progress", "step": step_id, "status": status, "detail": detail})
+
+    def _run_pipeline():
+        """Blocking pipeline — runs in a background thread."""
+        try:
+            # Validate ticker
+            if not is_valid_ticker(ticker):
+                progress_q.put({"type": "error", "detail": f"Ticker '{ticker}' not found on Yahoo Finance."})
+                return
+
+            on_progress("validate", "done", f"Ticker {ticker} validated")
+
+            report = judge_agent(ticker, end_date, parallel=False, on_progress=on_progress)
+            response = _report_to_response(report)
+            progress_q.put({"type": "result", "data": response})
+        except Exception as e:
+            logger.error("❌ Stream analysis failed for %s: %s", ticker, e, exc_info=True)
+            progress_q.put({"type": "error", "detail": f"Analysis failed: {str(e)}"})
+
+    async def event_generator():
+        """Async generator that yields SSE-formatted events."""
+        # Start the blocking pipeline in a background thread
+        thread = threading.Thread(target=_run_pipeline, daemon=True)
+        thread.start()
+
+        while True:
+            # Use async sleep instead of blocking queue.get to keep event loop alive
+            # This allows FastAPI to flush SSE chunks to the client immediately
+            await asyncio.sleep(0.3)
+
+            # Drain all available events from the queue
+            events_batch = []
+            while not progress_q.empty():
+                try:
+                    events_batch.append(progress_q.get_nowait())
+                except queue.Empty:
+                    break
+
+            for event in events_batch:
+                yield f"event: {event['type']}\ndata: {json.dumps(event)}\n\n"
+
+                # Terminal events — stop the generator
+                if event["type"] in ("result", "error"):
+                    return
+
+            # If thread is dead and queue is empty, we're done
+            if not thread.is_alive() and progress_q.empty():
+                break
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @app.post("/analyze/batch", tags=["Analysis"])
