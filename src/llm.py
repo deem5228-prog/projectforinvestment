@@ -50,6 +50,27 @@ def call_llm(
 
     client = genai.Client(api_key=api_key)
 
+    # Thinking models (e.g. gemini-3.5-flash) use tokens for internal
+    # reasoning before producing output. We need a larger budget and
+    # must set thinking_config so the model allocates tokens properly.
+    is_thinking_model = "3.5" in GEMINI_MODEL or "thinking" in GEMINI_MODEL.lower()
+
+    if is_thinking_model:
+        # For thinking models: set a generous budget and disable
+        # temperature (must be unset or the API rejects it).
+        effective_max_tokens = max(max_tokens * 4, 2048)
+        config = types.GenerateContentConfig(
+            system_instruction=system_prompt,
+            max_output_tokens=effective_max_tokens,
+            thinking_config=types.ThinkingConfig(thinking_budget=1024),
+        )
+    else:
+        config = types.GenerateContentConfig(
+            system_instruction=system_prompt,
+            temperature=temperature,
+            max_output_tokens=max_tokens,
+        )
+
     max_retries = 8
     backoff = 3.0
 
@@ -58,13 +79,29 @@ def call_llm(
             response = client.models.generate_content(
                 model=GEMINI_MODEL,
                 contents=user_prompt,
-                config=types.GenerateContentConfig(
-                    system_instruction=system_prompt,
-                    temperature=temperature,
-                    max_output_tokens=max_tokens,
-                ),
+                config=config,
             )
-            return response.text.strip()
+
+            # Extract text — thinking models may have multiple parts
+            # (thought parts + text parts). We want non-thought text.
+            text = response.text
+            if text is None and response.candidates:
+                candidate = response.candidates[0]
+                if candidate.content and candidate.content.parts:
+                    text_parts = [
+                        p.text for p in candidate.content.parts
+                        if p.text and not getattr(p, "thought", False)
+                    ]
+                    if text_parts:
+                        text = " ".join(text_parts)
+
+            if text is None:
+                logger.warning("[llm] Response text is None (finish_reason=%s)",
+                             getattr(response.candidates[0], 'finish_reason', 'unknown')
+                             if response.candidates else 'no candidates')
+                raise ValueError("Empty response from Gemini")
+
+            return text.strip()
         except APIError as e:
             # Check if it's a 429 rate limit error
             err_str = str(e)

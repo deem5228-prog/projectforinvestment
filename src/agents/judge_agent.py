@@ -196,10 +196,10 @@ def _run_agents(ticker: str, end_date: str, parallel: bool,
             except Exception as e:
                 logger.warning("[judge] %s agent failed: %s", name, e)
                 results[name] = {"signal": "neutral", "confidence": 50, "reasoning": f"Error: {e}"}
-            # Space out LLM calls to respect free-tier rate limit (5 req/min).
+            # Space out LLM calls to respect free-tier rate limit.
             if i < len(tasks) - 1:
-                logger.info("[judge] waiting 7s before next agent (rate limit)...")
-                time.sleep(7)
+                logger.info("[judge] waiting 12s before next agent (rate limit)...")
+                time.sleep(12)
 
     return results
 

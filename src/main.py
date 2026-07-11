@@ -38,6 +38,7 @@ logger = logging.getLogger("main")
 # ── Internal Imports ─────────────────────────────────────────────────────────
 
 from src.agents.judge_agent import judge_agent, JudgeReport
+from src.data.api import is_valid_ticker
 
 
 # ── Request / Response Schemas ───────────────────────────────────────────────
@@ -145,11 +146,17 @@ def _report_to_response(report: JudgeReport) -> dict:
 async def run_analysis(ticker: str, end_date: str) -> dict:
     """
     Full analysis pipeline:
-      1. Judge agent runs 4 AI agents in parallel
-      2. Each agent fetches data from yfinance independently
-      3. Judge aggregates into final verdict
+      1. Validate ticker exists
+      2. Judge agent runs 4 AI agents in parallel
+      3. Each agent fetches data from yfinance independently
+      4. Judge aggregates into final verdict
     """
     loop = asyncio.get_event_loop()
+
+    # Validate ticker
+    is_valid = await loop.run_in_executor(_executor, is_valid_ticker, ticker)
+    if not is_valid:
+        raise ValueError(f"Ticker symbol '{ticker}' is not found or has no data on Yahoo Finance.")
 
     logger.info("=" * 60)
     logger.info("🚀 ANALYSIS START: %s (end_date=%s)", ticker, end_date)
@@ -250,6 +257,12 @@ async def analyze_stock(request: AnalyzeRequest):
     try:
         result = await run_analysis(ticker, end_date)
         return AnalyzeResponse(**result)
+    except ValueError as ve:
+        logger.warning("⚠️ Validation failed for %s: %s", ticker, ve)
+        raise HTTPException(
+            status_code=400,
+            detail=str(ve),
+        )
     except Exception as e:
         logger.error("❌ Analysis failed for %s: %s", ticker, e, exc_info=True)
         raise HTTPException(

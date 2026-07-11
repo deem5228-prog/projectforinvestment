@@ -34,6 +34,19 @@ def _get_yf_ticker(ticker: str) -> yf.Ticker:
     return yf.Ticker(ticker)
 
 
+def is_valid_ticker(ticker: str) -> bool:
+    """Check if the ticker symbol exists and has history on Yahoo Finance."""
+    try:
+        stock = _get_yf_ticker(ticker)
+        # Try fetching 1 day of history to verify
+        df = stock.history(period="1d")
+        return not df.empty
+    except Exception as e:
+        logger.warning("Validation failed for ticker %s: %s", ticker, e)
+        return False
+
+
+
 # ── Prices ───────────────────────────────────────────────────────────────────
 
 def get_prices(ticker: str, start_date: str, end_date: str, api_key: str = None) -> list[Price]:
@@ -480,10 +493,18 @@ def get_insider_trades(
         trades = []
         for _, row in df.iterrows():
             raw_shares = row.get("shares")
-            txn_type = str(row.get("transaction", "")).lower()
+            txn_type = str(row.get("transaction", "")).strip()
+            txn_text = str(row.get("text", "")).strip()
+            
+            # Fallback to parsing text column if transaction is empty
+            if not txn_type and txn_text:
+                txn_type = txn_text.split(" at ")[0] if " at " in txn_text else txn_text
+                
+            txn_type_lower = txn_type.lower()
+            
             # yfinance always stores positive share counts; negate for sales so
             # that callers can use sign to distinguish buys (> 0) from sells (< 0).
-            if raw_shares is not None and any(w in txn_type for w in ("sale", "sell")):
+            if raw_shares is not None and any(w in txn_type_lower for w in ("sale", "sell")):
                 raw_shares = -abs(raw_shares)
             trades.append(InsiderTrade(
                 ticker=ticker,
@@ -491,7 +512,7 @@ def get_insider_trades(
                 transaction_date=row.get("filing_date"),
                 insider_name=row.get("insider", row.get("name", "")),
                 insider_title=row.get("position", row.get("title", "")),
-                transaction_type=row.get("transaction", ""),
+                transaction_type=txn_type,
                 shares=raw_shares,
                 price_per_share=row.get("value"),
                 total_value=None,
