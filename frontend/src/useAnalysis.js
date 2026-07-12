@@ -4,9 +4,10 @@ const STREAM_URL = '/analyze/stream'
 
 // Pipeline steps in display order
 const PIPELINE_STEPS = [
-  { id: 'validate',            label: 'Validate Ticker',     icon: '🔍' },
-  { id: 'normalizer',          label: 'Fetch Financial Data', icon: '📊' },
-  { id: 'agent_warren_buffett', label: 'Buffett Agent',       icon: '🏛️' },
+  { id: 'validate',            label: 'Validate Ticker',      icon: '🔍' },
+  { id: 'normalizer',          label: 'Fetch Financial Data',  icon: '📊' },
+  { id: 'dcf_valuation',       label: 'DCF Fair Value',        icon: '💰' },
+  { id: 'agent_warren_buffett', label: 'Buffett Agent',        icon: '🏛️' },
   { id: 'agent_nassim_taleb',  label: 'Taleb Agent',         icon: '🦢' },
   { id: 'agent_hedge_fund',    label: 'Hedge Fund Agent',    icon: '📈' },
   { id: 'agent_quant',         label: 'Quant Agent',         icon: '🔢' },

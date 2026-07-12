@@ -103,6 +103,11 @@ function ResultPanel({ result }) {
         </div>
       )}
 
+      {/* ── DCF Fair Value ── */}
+      {result.dcf_valuation && !result.dcf_valuation.error && (
+        <DcfCard dcf={result.dcf_valuation} />
+      )}
+
       {/* ── Strengths & Risks ── */}
       <div className="strengths-risks-row">
         {result.strengths && result.strengths.length > 0 && (
@@ -122,6 +127,118 @@ function ResultPanel({ result }) {
           </div>
         )}
       </div>
+    </div>
+  )
+}
+
+function DcfCard({ dcf }) {
+  const upside = dcf.upside_pct
+  const isUp = upside != null && upside >= 0
+  const color = dcf.verdict === 'Undervalued' ? '#22c55e'
+              : dcf.verdict === 'Overvalued'  ? '#ef4444'
+              : '#f59e0b'
+
+  const formatNum = (n) => {
+    if (n == null) return '—'
+    if (Math.abs(n) >= 1e9) return (n / 1e9).toFixed(1) + 'B'
+    if (Math.abs(n) >= 1e6) return (n / 1e6).toFixed(1) + 'M'
+    if (Math.abs(n) >= 1e3) return (n / 1e3).toFixed(1) + 'K'
+    return n.toLocaleString()
+  }
+
+  return (
+    <div className="section dcf-section" style={{ borderColor: color + '40' }}>
+      <h3 className="section-title">💰 DCF Fair Value</h3>
+
+      <div className="dcf-hero">
+        <div className="dcf-price-block">
+          <div className="dcf-label">Fair Value / Share</div>
+          <div className="dcf-fair-price" style={{ color }}>
+            {dcf.fair_value_per_share?.toFixed(2) ?? '—'}
+          </div>
+        </div>
+
+        {dcf.current_price && (
+          <div className="dcf-price-block">
+            <div className="dcf-label">Current Price</div>
+            <div className="dcf-current-price">
+              {dcf.current_price.toFixed(2)}
+            </div>
+          </div>
+        )}
+
+        {upside != null && (
+          <div className="dcf-price-block">
+            <div className="dcf-label">Upside / Downside</div>
+            <div className="dcf-upside" style={{ color }}>
+              {isUp ? '▲' : '▼'} {upside > 0 ? '+' : ''}{upside.toFixed(1)}%
+            </div>
+          </div>
+        )}
+
+        <div className="dcf-price-block">
+          <div className="dcf-label">Verdict</div>
+          <div className="dcf-verdict-badge" style={{ color, borderColor: color + '60' }}>
+            {dcf.verdict}
+          </div>
+        </div>
+      </div>
+
+      {dcf.details && (
+        <details className="dcf-details">
+          <summary className="dcf-details-summary">📐 DCF Breakdown</summary>
+          <div className="dcf-details-grid">
+            <div className="dcf-detail-item">
+              <span className="dcf-detail-label">Base FCF</span>
+              <span className="dcf-detail-value">{formatNum(dcf.details.base_fcf)}</span>
+            </div>
+            <div className="dcf-detail-item">
+              <span className="dcf-detail-label">Growth (Stage 1)</span>
+              <span className="dcf-detail-value">{dcf.details.growth_rate_stage1}%</span>
+            </div>
+            <div className="dcf-detail-item">
+              <span className="dcf-detail-label">Growth (Stage 2)</span>
+              <span className="dcf-detail-value">{dcf.details.growth_rate_stage2}%</span>
+            </div>
+            <div className="dcf-detail-item">
+              <span className="dcf-detail-label">Terminal Growth</span>
+              <span className="dcf-detail-value">{dcf.details.terminal_growth}%</span>
+            </div>
+            <div className="dcf-detail-item">
+              <span className="dcf-detail-label">Discount Rate</span>
+              <span className="dcf-detail-value">{dcf.details.discount_rate}%</span>
+            </div>
+            <div className="dcf-detail-item">
+              <span className="dcf-detail-label">Safety Margin</span>
+              <span className="dcf-detail-value">{dcf.details.safety_margin}%</span>
+            </div>
+            <div className="dcf-detail-item">
+              <span className="dcf-detail-label">PV Stage 1</span>
+              <span className="dcf-detail-value">{formatNum(dcf.details.pv_stage1)}</span>
+            </div>
+            <div className="dcf-detail-item">
+              <span className="dcf-detail-label">PV Stage 2</span>
+              <span className="dcf-detail-value">{formatNum(dcf.details.pv_stage2)}</span>
+            </div>
+            <div className="dcf-detail-item">
+              <span className="dcf-detail-label">PV Terminal</span>
+              <span className="dcf-detail-value">{formatNum(dcf.details.pv_terminal)}</span>
+            </div>
+            <div className="dcf-detail-item">
+              <span className="dcf-detail-label">Enterprise Value</span>
+              <span className="dcf-detail-value">{formatNum(dcf.details.enterprise_value)}</span>
+            </div>
+            <div className="dcf-detail-item">
+              <span className="dcf-detail-label">Net Debt</span>
+              <span className="dcf-detail-value">{formatNum((dcf.details.total_debt || 0) - (dcf.details.cash || 0))}</span>
+            </div>
+            <div className="dcf-detail-item">
+              <span className="dcf-detail-label">Equity Value</span>
+              <span className="dcf-detail-value" style={{ color }}>{formatNum(dcf.details.equity_value)}</span>
+            </div>
+          </div>
+        </details>
+      )}
     </div>
   )
 }

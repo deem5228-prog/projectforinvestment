@@ -87,6 +87,7 @@ class AnalyzeResponse(BaseModel):
     strengths: list[str]
     risks: list[str]
     verdict_reasoning: str
+    dcf_valuation: dict | None = None
 
 
 class HealthResponse(BaseModel):
@@ -145,6 +146,7 @@ def _report_to_response(report: JudgeReport) -> dict:
         "strengths": report.strengths,
         "risks": report.risks,
         "verdict_reasoning": report.reasoning,
+        "dcf_valuation": report.dcf_valuation,
     }
 
 

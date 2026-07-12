@@ -30,6 +30,7 @@ from src.agents.buffett_agent   import warren_buffett_agent
 from src.agents.taleb_agent     import nassim_taleb_agent
 from src.agents.hedge_fund_agent import hedge_fund_agent
 from src.agents.quant_agent     import quant_agent
+from src.agents.dcf_agent       import calculate_dcf_fair_value
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +57,7 @@ class JudgeReport:
     risks: list[str]
     position_size: str     # "full" | "half" | "small" | "none"
     reasoning: str         # LLM narrative summary
+    dcf_valuation: dict | None = None  # standalone DCF fair value (not part of vote)
 
 
 # ── Agent weights (sum to 1.0) ────────────────────────────────────────────────
@@ -114,6 +116,24 @@ def judge_agent(ticker: str, end_date: str, parallel: bool = True,
         normalized_data = None
         _emit("normalizer", "error", str(e))
 
+    # ── Step 0.5: DCF Fair Value (standalone — no vote, no LLM) ────────────
+    _emit("dcf_valuation", "running", "Calculating intrinsic value (pure math)…")
+    try:
+        dcf_result = calculate_dcf_fair_value(ticker, end_date, normalized_data)
+        if dcf_result.get("error"):
+            _emit("dcf_valuation", "error", dcf_result["error"])
+        else:
+            fv = dcf_result['fair_value_per_share']
+            up = dcf_result.get('upside_pct')
+            detail = f"Fair Value: {fv:.2f}"
+            if up is not None:
+                detail += f" (Upside {up:+.1f}%)"
+            _emit("dcf_valuation", "done", detail)
+    except Exception as e:
+        logger.warning("[judge] DCF calculation failed: %s", e)
+        dcf_result = None
+        _emit("dcf_valuation", "error", str(e))
+
     # ── Step 1: Run all agents ────────────────────────────────────────────
     raw = _run_agents(ticker, end_date, parallel=parallel,
                       normalized_data=normalized_data, on_progress=_emit)
@@ -170,6 +190,7 @@ def judge_agent(ticker: str, end_date: str, parallel: bool = True,
         risks=risks,
         position_size=position_size,
         reasoning=verdict_out["reasoning"],
+        dcf_valuation=dcf_result,
     )
 
     logger.info(
